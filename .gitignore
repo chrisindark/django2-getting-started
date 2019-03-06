@@ -1,8 +1,13 @@
 .idea
+.vscode
+
 __pycache__
 *.pyc
 *.py~
+
 /media
 /static
+
 .env
 db.sqlite3
+
