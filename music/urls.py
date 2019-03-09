@@ -1,8 +1,9 @@
-from django.urls import path, re_path
+from django.urls import re_path
 
-from .views import SongListApiView
+from .views import SongListCreateApiView, SongsDetailApiView
 
 
-urlpatterns = [
-    re_path('(?P<version>(v1|v2))/songs/', SongListApiView.as_view(), name="songs")
-]
+urlpatterns = (
+    re_path('(?P<version>(v1|v2))/songs/$', SongListCreateApiView.as_view(), name='songs'),
+    re_path('(?P<version>(v1|v2))/songs/(?P<pk>\d+)/$', SongsDetailApiView.as_view(), name='songs-detail'),
+)

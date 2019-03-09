@@ -1,6 +1,4 @@
 import requests
-import time
-import asyncio
 
 from django.http import JsonResponse
 from django.core.cache import cache
