@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+
 from django.conf import settings
+from django.contrib.auth import authenticate, login
 
 from .models import User
 from .constants import ALPHANUMERIC
@@ -137,7 +139,6 @@ class UserConfirmSerializer(serializers.ModelSerializer):
         fields = ('token',)
 
     def validate(self, data):
-        print(data.get('token'))
         try:
             self.user = User.objects.get(security_key=data['token'])
             if self.user.is_active:
@@ -155,4 +156,32 @@ class UserConfirmSerializer(serializers.ModelSerializer):
         self.user.security_key_expires = None
         self.user.save()
 
+        return self.user
+
+
+class TokenSerializer(serializers.Serializer):
+    """
+    This serializer serializes the token data
+    """
+    token = serializers.CharField(max_length=255)
+
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField(required=True, validators=[ALPHANUMERIC], max_length=20, min_length=8)
+    password = serializers.CharField(required=True, max_length=128, min_length=8)
+
+    user = None
+
+    def validate(self, data):
+        request = self.context.get('request')
+        self.user = authenticate(request, **data)
+        if self.user is None:
+            raise ValidationError({'non_field_errors': 'Unable to log in with provided credentials.'})
+
+        # login saves the user’s ID in the session,
+        # using Django’s session framework.
+        # login(request, self.user)
+        return data
+
+    def save(self, **kwargs):
         return self.user

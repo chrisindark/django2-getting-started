@@ -1,19 +1,29 @@
 import requests
+import time
+import asyncio
 
 from django.http import JsonResponse
 from django.core.cache import cache
+from django.conf import settings
 
 from rest_framework import views, generics, pagination, status, permissions
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
+from rest_framework_jwt.settings import api_settings
 
 from mysite.exceptions import ServiceUnavailable
 from users.constants import USERS_GET_URL, USER_DETAIL_CACHE_KEY
 from users.serializers import (
-    UserSerializer, UserRegistrationSerializer, UserActivateSerializer, UserConfirmSerializer
+    UserSerializer, UserRegistrationSerializer, UserActivateSerializer, UserConfirmSerializer,
+    LoginSerializer, TokenSerializer
 )
 from users.models import User
 from users.permissions import IsNotAuthenticated
+
+
+# Get the JWT settings
+jwt_payload_handler = api_settings.JWT_PAYLOAD_HANDLER
+jwt_encode_handler = api_settings.JWT_ENCODE_HANDLER
 
 
 # Create your views here.
@@ -66,6 +76,12 @@ class UserMixin(generics.GenericAPIView):
     serializer_class = UserSerializer
     pagination_class = UserPagination
 
+    def send_activation_email(self, user):
+        context = self.get_serializer_context()
+        serializer = UserActivateSerializer(data=user, context=context)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
 
 class UserListCreateApiView(UserMixin, generics.ListCreateAPIView):
     def get_serializer_class(self):
@@ -80,14 +96,14 @@ class UserListCreateApiView(UserMixin, generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save()
-        # uncomment when an email server is installed
-        self.send_activation_email(serializer.data)
 
-    def send_activation_email(self, user):
-        context = self.get_serializer_context()
-        serializer = UserActivateSerializer(data=user, context=context)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+        if settings.SEND_ACTIVATION_EMAIL:
+            # uncomment when an email server is installed
+            self.send_activation_email(serializer.data)
+
+        return Response({
+            'detail': 'Account activation email has been sent.'
+        }, status=status.HTTP_200_OK)
 
 
 class UserActivateView(generics.CreateAPIView):
@@ -104,12 +120,24 @@ class UserActivateView(generics.CreateAPIView):
         }, status=status.HTTP_200_OK)
 
 
-class UserConfirmView(generics.CreateAPIView, generics.RetrieveAPIView):
+class UserConfirmViewMixin(object):
     permission_classes = (IsNotAuthenticated,)
     serializer_class = UserConfirmSerializer
 
+
+class UserConfirmView(UserConfirmViewMixin, generics.CreateAPIView):
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response({
+            'detail': 'Your account has been activated.'
+        }, status=status.HTTP_200_OK)
+
+
+class UserGetConfirmView(UserConfirmViewMixin, generics.RetrieveAPIView):
     def get(self, request, *args, **kwargs):
-        token = kwargs.get('token', None)
         serializer = self.get_serializer(data=kwargs)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -118,11 +146,41 @@ class UserConfirmView(generics.CreateAPIView, generics.RetrieveAPIView):
             'detail': 'Your account has been activated.'
         }, status=status.HTTP_200_OK)
 
+
+class LoginView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = LoginSerializer
+    permission_classes = (permissions.AllowAny,)
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        if user is not None:
+            serializer = TokenSerializer(data={
+                # using drf jwt utility functions to generate a token
+                "token": jwt_encode_handler(
+                    jwt_payload_handler(user)
+                )})
+            serializer.is_valid()
+            return Response(serializer.validated_data)
+        return Response(status=status.HTTP_401_UNAUTHORIZED)
+
+
+class UserRegistrationView(UserMixin, generics.CreateAPIView):
+    serializer_class = UserRegistrationSerializer
+    permission_classes = (permissions.AllowAny,)
+
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
+        if settings.SEND_ACTIVATION_EMAIL:
+            # uncomment when an email server is installed
+            self.send_activation_email(serializer.data)
+
         return Response({
-            'detail': 'Your account has been activated.'
+            'detail': 'Account activation email has been sent.'
         }, status=status.HTTP_200_OK)

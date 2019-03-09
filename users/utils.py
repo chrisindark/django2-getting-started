@@ -1,4 +1,7 @@
-import os, binascii
+import os
+import binascii
+import asyncio
+import time
 
 from datetime import datetime, timedelta
 
@@ -34,3 +37,34 @@ class UserEmailManager(object):
             email_response = None
 
         return email_response
+
+
+async def coroutine_sleep(number, time_to_sleep):
+    print('coroutine_{0} is active on the event loop'.format(number))
+
+    print('coroutine_{0} yielding control. Going to be blocked for {1} seconds'.format(number, time_to_sleep))
+    await asyncio.sleep(time_to_sleep)
+
+    print('coroutine_{0} resumed. coroutine_{0} exiting'.format(number))
+
+
+async def coroutine_example():
+    # get default event loop
+    loop = asyncio.get_event_loop()
+    # loop = asyncio.new_event_loop()
+    # asyncio.set_event_loop(loop)
+
+    future1 = asyncio.ensure_future(coroutine_sleep(1, 4))
+    # loop.run_until_complete(future1)
+    future2 = asyncio.ensure_future(coroutine_sleep(2, 5))
+    # loop.run_until_complete(future2)
+
+    # print('future', future1)
+    # await future1
+    # print('future', future2)
+    # await future2
+    # print('future', future3)
+    # await future3
+
+    future3 = asyncio.gather(future1, future2)
+    await future3
